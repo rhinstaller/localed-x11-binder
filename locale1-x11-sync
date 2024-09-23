@@ -1,15 +1,15 @@
 #!/usr/bin/python3
 """
-Sync Sway input configuration with org.freedesktop.locale1.
+Sync X11 input configuration with org.freedesktop.locale1.
 
 Usage:
     Configure keyboard mappings with `localectl set-x11-keymap`.
-    Add `exec /path/to/script` to your Sway config.
+    Enable service file for this script.
 
 See also:
     https://www.freedesktop.org/software/systemd/man/org.freedesktop.locale1.html
 
-Dependencies: dbus-next, i3ipc
+Dependencies: dbus-next, setxkbmap
 """
 import argparse
 import asyncio
@@ -18,10 +18,9 @@ from typing import Any, Dict
 
 from dbus_next import BusType, DBusError, Variant
 from dbus_next.aio import MessageBus
-from i3ipc.aio import Connection
 
 DEFAULT_DEVICE = 'type:keyboard'
-LOG = logging.getLogger("sway.locale1")
+LOG = logging.getLogger("locale1-x11-sync")
 LOCALE1_BUS_NAME = "org.freedesktop.locale1"
 LOCALE1_OBJECT_PATH = "/org/freedesktop/locale1"
 LOCALE1_INTERFACE = "org.freedesktop.locale1"
@@ -44,10 +43,8 @@ class Locale1Client:
 
     def __init__(self,
                  bus: MessageBus,
-                 conn: Connection,
                  device: str = DEFAULT_DEVICE):
         self._bus = bus
-        self._conn = conn
         self._proxy = None
         self._device = device
 
@@ -92,29 +89,17 @@ class Locale1Client:
 
     async def update(self):
         """Pass the updated xkb configuration to Sway"""
-        LOG.info("xkb(%s): layout '%s' model '%s', variant '%s' options '%s'",
-                 self._device, self.layout, self.model, self.variant,
-                 self.options)
-        cmd = [f"input {self._device} xkb_variant ''"]
-        cmd.extend([
-            f"input {self._device} xkb_{name} '{self.__dict__[name]}'"
-            for name in PROPERTIES.values()
-        ])
-        replies = await self._conn.command(', '.join(cmd))
-        for cmd, reply in zip(cmd, replies):
-            if reply.error is not None:
-                LOG.error("command '%s' failed: %s", cmd, reply.error)
+        pass
 
 
 async def main(args: argparse.Namespace):
     """Async entrypoint"""
     try:
         bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
-        conn = await Connection(auto_reconnect=False).connect()
-        await Locale1Client(bus, conn, device=args.device).connect()
+        await Locale1Client(bus).connect()
 
         if not args.oneshot:
-            await conn.main()
+            await bus.wait_for_disconnect()
     except DBusError as exc:
         LOG.error("DBus connection error: %s", exc)
     except (ConnectionError, EOFError) as exc:
@@ -123,7 +108,7 @@ async def main(args: argparse.Namespace):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Sync Sway input configuration with org.freedesktop.locale1"
+        description="Sync X11 desktop system input configuration with org.freedesktop.locale1"
     )
     parser.add_argument(
         "-l",
@@ -132,15 +117,6 @@ if __name__ == "__main__":
         default="info",
         dest="loglevel",
         help="set logging level",
-    )
-    parser.add_argument(
-        "--device",
-        default=DEFAULT_DEVICE,
-        metavar='identifier',
-        nargs='?',
-        type=str,
-        help="control settings for a specific device "
-        "(see man sway-input; default: %(default)s)",
     )
     parser.add_argument("--oneshot",
                         action='store_true',
