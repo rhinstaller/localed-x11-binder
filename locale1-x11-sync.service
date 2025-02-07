@@ -1,0 +1,7 @@
+[Unit]
+Description=Sync localed configuration with running X11 system
+
+[Service]
+Type=exec
+ExecStart=/usr/libexec/locale1-x11-sync
+Restart=on-failure
